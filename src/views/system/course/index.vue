@@ -107,16 +107,34 @@
           <el-input v-model="form.courseAuthor" placeholder="请输入课程作者" />
         </el-form-item>
         <el-form-item label="课程封面" prop="courseCover">
-          <el-input v-model="form.courseCover" placeholder="请输入课程封面" />
+          <el-upload
+              class="upload-demo"
+              action=""
+              list-type="picture-card"
+              :file-list="courseCoverList"
+              :on-change="handleCoverChange"
+          >
+            <i class="el-icon-plus"></i>
+          </el-upload>
+          <span class="el-upload__tip">请上传大小不超过 5MB 的 png/jpg/jpeg 格式图片</span>
         </el-form-item>
         <el-form-item label="课程视频" prop="courseVideo">
-          <el-input v-model="form.courseVideo" placeholder="请输入课程视频" />
+          <el-upload
+              class="upload-demo"
+              action=""
+              list-type="picture-card"
+              :file-list="courseVideoList"
+              :on-change="handleVideoChange"
+          >
+            <i class="el-icon-plus"></i>
+          </el-upload>
+          <span class="el-upload__tip">请上传大小不超过 50MB 的 doc/xls/ppt/txt/pdf/mp4 格式文件</span>
         </el-form-item>
         <el-form-item label="课程排序" prop="courseSort">
           <el-input-number v-model="form.courseSort" controls-position="right" :min="0" />
         </el-form-item>
         <el-form-item label="备注" prop="remark">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
+          <quill-editor v-model="form.remark" :style="{ height: '200px', width: '100%' }" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -131,6 +149,9 @@
 
 <script setup name="Course">
 import { listCourse, addCourse, delCourse, getCourse, updateCourse } from "@/api/system/course";
+import { ref, reactive, toRefs, getCurrentInstance } from "vue";
+import { QuillEditor } from '@vueup/vue-quill';
+import '@vueup/vue-quill/dist/vue-quill.snow.css';
 
 const { proxy } = getCurrentInstance();
 
@@ -143,6 +164,8 @@ const single = ref(true);
 const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
+const courseCoverList = ref([]);
+const courseVideoList = ref([]);
 
 const data = reactive({
   form: {},
@@ -155,7 +178,6 @@ const data = reactive({
   rules: {
     courseName: [{ required: true, message: "课程名称不能为空", trigger: "blur" }],
     courseAuthor: [{ required: true, message: "课程作者不能为空", trigger: "blur" }],
-    courseSort: [{ required: true, message: "课程排序不能为空", trigger: "blur" }],
   }
 });
 
@@ -178,7 +200,7 @@ function cancel() {
 /** 表单重置 */
 function reset() {
   form.value = {
-    courseId: undefined,
+    courseId: null, // 将 courseId 设置为 null 而不是 undefined
     courseName: undefined,
     courseDescription: undefined,
     courseCover: undefined,
@@ -187,6 +209,8 @@ function reset() {
     courseSort: 0,
     remark: undefined
   };
+  courseCoverList.value = [];
+  courseVideoList.value = [];
   proxy.resetForm("courseRef");
 }
 /** 搜索按钮操作 */
@@ -225,14 +249,15 @@ function handleUpdate(row) {
 function submitForm() {
   proxy.$refs["courseRef"].validate(valid => {
     if (valid) {
-      if (form.value.courseId != undefined) {
-        updateCourse(form.value).then(response => {
+      let jsonForm = JSON.stringify(form.value);
+      if (form.value.courseId != null) {
+        updateCourse(jsonForm).then(response => {
           proxy.$modal.msgSuccess("修改成功");
           open.value = false;
           getList();
         });
       } else {
-        addCourse(form.value).then(response => {
+        addCourse(jsonForm).then(response => {
           proxy.$modal.msgSuccess("新增成功");
           open.value = false;
           getList();
@@ -258,5 +283,19 @@ function handleExport() {
   }, `course_${new Date().getTime()}.xlsx`);
 }
 
+function handleCoverChange(file, fileList) {
+  courseCoverList.value = fileList;
+}
+
+function handleVideoChange(file, fileList) {
+  courseVideoList.value = fileList;
+}
+
 getList();
 </script>
+
+<style scoped>
+.upload-demo .el-icon-plus {
+  font-size: 28px;
+}
+</style>
