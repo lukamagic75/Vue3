@@ -1,5 +1,6 @@
 <template>
   <div class="app-container">
+    <!-- 搜索表单 -->
     <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch">
       <el-form-item label="课程名称" prop="courseName">
         <el-input
@@ -107,34 +108,44 @@
           <el-input v-model="form.courseAuthor" placeholder="请输入课程作者" />
         </el-form-item>
         <el-form-item label="课程封面" prop="courseCover">
+          <!-- 课程封面上传组件 -->
           <el-upload
-              class="upload-demo"
-              action=""
+              multiple
+              :before-upload="handleImageUpload"
               list-type="picture-card"
-              :file-list="courseCoverList"
-              :on-change="handleCoverChange"
+              :file-list="imageFileList"
+              :on-remove="handleImageRemove"
+              :auto-upload="true"
+              :on-preview="handlePictureCardPreview"
           >
-            <i class="el-icon-plus"></i>
+            <el-icon class="avatar-uploader-icon"><plus /></el-icon>
           </el-upload>
-          <span class="el-upload__tip">请上传大小不超过 5MB 的 png/jpg/jpeg 格式图片</span>
         </el-form-item>
         <el-form-item label="课程视频" prop="courseVideo">
+          <!-- 课程视频上传组件 -->
           <el-upload
-              class="upload-demo"
-              action=""
+              multiple
+              :before-upload="handleVideoUpload"
               list-type="picture-card"
-              :file-list="courseVideoList"
-              :on-change="handleVideoChange"
+              :file-list="videoFileList"
+              :on-remove="handleVideoRemove"
+              :auto-upload="true"
           >
-            <i class="el-icon-plus"></i>
+            <el-icon class="avatar-uploader-icon"><plus /></el-icon>
           </el-upload>
-          <span class="el-upload__tip">请上传大小不超过 50MB 的 doc/xls/ppt/txt/pdf/mp4 格式文件</span>
         </el-form-item>
         <el-form-item label="课程排序" prop="courseSort">
           <el-input-number v-model="form.courseSort" controls-position="right" :min="0" />
         </el-form-item>
         <el-form-item label="备注" prop="remark">
-          <quill-editor v-model="form.remark" :style="{ height: '200px', width: '100%' }" />
+          <!-- 富文本编辑器组件 -->
+          <quill-editor
+              ref="quillEditorRef"
+              v-model:content="form.remark"
+              contentType="html"
+              :options="options"
+              :style="styles"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -164,11 +175,24 @@ const single = ref(true);
 const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
-const courseCoverList = ref([]);
-const courseVideoList = ref([]);
+const imageFileList = ref([]);
+const videoFileList = ref([]);
+const quillEditorRef = ref(null);
+const styles = ref({
+  height: '400px',
+});
 
 const data = reactive({
-  form: {},
+  form: {
+    courseId: null,
+    courseName: '',
+    courseDescription: '',
+    courseCover: '',
+    courseVideo: '',
+    courseAuthor: '',
+    courseSort: 0,
+    remark: ''
+  },
   queryParams: {
     pageNum: 1,
     pageSize: 10,
@@ -200,19 +224,23 @@ function cancel() {
 /** 表单重置 */
 function reset() {
   form.value = {
-    courseId: null, // 将 courseId 设置为 null 而不是 undefined
-    courseName: undefined,
-    courseDescription: undefined,
-    courseCover: undefined,
-    courseVideo: undefined,
-    courseAuthor: undefined,
+    courseId: null,
+    courseName: '',
+    courseDescription: '',
+    courseCover: '',
+    courseVideo: '',
+    courseAuthor: '',
     courseSort: 0,
-    remark: undefined
+    remark: ''
   };
-  courseCoverList.value = [];
-  courseVideoList.value = [];
+  imageFileList.value = [];
+  videoFileList.value = [];
   proxy.resetForm("courseRef");
 }
+function handleTextChange({ editor }) {
+  form.value.remark = editor.root.innerHTML;  // 将编辑器内容转换为HTML格式
+}
+
 /** 搜索按钮操作 */
 function handleQuery() {
   queryParams.value.pageNum = 1;
@@ -246,10 +274,30 @@ function handleUpdate(row) {
   });
 }
 /** 提交按钮 */
+/** 提交按钮 */
 function submitForm() {
   proxy.$refs["courseRef"].validate(valid => {
     if (valid) {
-      let jsonForm = JSON.stringify(form.value);
+      // 确保备注内容为HTML字符串
+      const quillInstance = quillEditorRef.value && quillEditorRef.value.getQuill();
+      if (quillInstance) {
+        form.value.remark = quillInstance.root.innerHTML;
+      }
+      console.log("Form data being submitted:", form.value);  // 检查提交的数据
+
+      // 构建简化的数据对象，只包含必要的属性
+      const submitData = {
+        courseId: form.value.courseId,
+        courseName: form.value.courseName,
+        courseDescription: form.value.courseDescription,
+        courseCover: form.value.courseCover,
+        courseVideo: form.value.courseVideo,
+        courseAuthor: form.value.courseAuthor,
+        courseSort: form.value.courseSort,
+        remark: form.value.remark
+      };
+
+      let jsonForm = JSON.stringify(submitData);
       if (form.value.courseId != null) {
         updateCourse(jsonForm).then(response => {
           proxy.$modal.msgSuccess("修改成功");
@@ -266,6 +314,8 @@ function submitForm() {
     }
   });
 }
+
+
 /** 删除按钮操作 */
 function handleDelete(row) {
   const courseIds = row.courseId || ids.value;
@@ -282,14 +332,63 @@ function handleExport() {
     ...queryParams.value
   }, `course_${new Date().getTime()}.xlsx`);
 }
+/** 图片上传处理 */
+function handleImageUpload(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    // 删除旧的封面
+    imageFileList.value = [];
+    form.value.courseCover = '';
 
-function handleCoverChange(file, fileList) {
-  courseCoverList.value = fileList;
+    // 添加新的封面
+    form.value.courseCover = e.target.result;  // 将Base64字符串存储到表单字段中
+    imageFileList.value.push({ name: file.name, url: e.target.result });
+    console.log('Image uploaded, form.courseCover:', form.value.courseCover);  // 添加调试代码
+  };
+  reader.readAsDataURL(file);
+  return false;  // 阻止默认的上传行为
 }
 
-function handleVideoChange(file, fileList) {
-  courseVideoList.value = fileList;
+/** 图片移除处理 */
+function handleImageRemove(file, fileList) {
+  imageFileList.value = fileList;
+  if (fileList.length === 0) {
+    form.value.courseCover = '';  // 如果移除所有图片，清空表单字段
+  }
 }
+
+/** 图片预览处理 */
+function handlePictureCardPreview(file) {
+  const imgWindow = window.open(file.url);
+  imgWindow.document.write('<img src="' + file.url + '" />');
+}
+
+/** 视频上传处理 */
+function handleVideoUpload(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    // 删除旧的视频
+    videoFileList.value = [];
+    form.value.courseVideo = '';
+
+    // 添加新的视频
+    form.value.courseVideo = e.target.result;  // 将Base64字符串存储到表单字段中
+    videoFileList.value.push({ name: file.name, url: e.target.result });
+    console.log('Video uploaded, form.courseVideo:', form.value.courseVideo);  // 添加调试代码
+  };
+  reader.readAsDataURL(file);
+  return false;  // 阻止默认的上传行为
+}
+
+/** 视频移除处理 */
+function handleVideoRemove(file, fileList) {
+  videoFileList.value = fileList;
+  if (fileList.length === 0) {
+    form.value.courseVideo = '';  // 如果移除所有视频，清空表单字段
+  }
+}
+
+
 
 getList();
 </script>
